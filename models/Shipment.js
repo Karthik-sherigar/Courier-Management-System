@@ -19,7 +19,8 @@ const shipmentSchema = new mongoose.Schema({
     packageDetails: {
         weight: Number,
         packageType: String,
-        description: String
+        description: String,
+        price: Number
     },
     estimatedDelivery: {
         type: Date
