@@ -16,7 +16,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const resData = await res.json();
                 if (!res.ok) throw new Error(resData.message || 'Something went wrong');
                 return resData;
-            } catch (err) { alert(err.message); throw err; }
+            } catch (err) {
+                // Suppress standard alert here, let caller handle or show toast
+                throw err;
+            }
         },
         login: (data) => api.request('/auth/login', 'POST', data),
         register: (data) => api.request('/auth/register', 'POST', data),
@@ -27,29 +30,84 @@ document.addEventListener('DOMContentLoaded', () => {
         updateStatus: (id, data) => api.request(`/shipments/${id}/status`, 'PUT', data)
     };
 
+    // --- Toast Notification ---
+    const showToast = (message, type = 'info') => {
+        const container = document.getElementById('toast-container') || createToastContainer();
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `
+            <div class="toast-content">
+                <div class="toast-title">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
+                <div class="toast-message">${message}</div>
+            </div>
+        `;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s ease forwards';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    };
+
+    const createToastContainer = () => {
+        const div = document.createElement('div');
+        div.id = 'toast-container';
+        div.className = 'toast-container';
+        document.body.appendChild(div);
+        return div;
+    };
+
     // --- Helper Components ---
     const Navbar = () => {
         const user = state.user;
-        let navLinks = `
-            <li class="nav-item" onclick="router.navigate('home')">Home</li>
-            <li class="nav-item">Features</li>
-            <li class="nav-item">About</li>
-             <li class="nav-item" onclick="router.navigate('track')">Track Shipment</li>
-        `;
-        if (user) navLinks += `<li class="nav-item" onclick="router.navigate('dashboard')">Dashboard</li>`;
+        const currentHash = window.location.hash.replace('#', '') || 'home';
+
+        let linksHtml = '';
+
+        // Strict Nav Logic
+        if (!user) {
+            // Guest: Only Home
+            linksHtml = `<li class="nav-item ${currentHash === 'home' ? 'active' : ''}" onclick="router.navigate('home')">Home</li>`;
+        } else {
+            // Auth: Home, Track, Dashboard
+            // Logic:
+            // Customer: Home, Track, Dashboard
+            // Staff/Admin: Track, Dashboard (No Home)
+
+            if (user.role === 'customer') {
+                linksHtml += `<li class="nav-item ${currentHash === 'home' ? 'active' : ''}" onclick="router.navigate('home')">Home</li>`;
+            }
+
+            linksHtml += `
+                <li class="nav-item ${currentHash === 'track' ? 'active' : ''}" onclick="router.navigate('track')">Track Shipment</li>
+                <li class="nav-item ${currentHash === 'dashboard' ? 'active' : ''}" onclick="router.navigate('dashboard')">Dashboard</li>
+            `;
+        }
 
         const authBtn = user
             ? `<button class="btn btn-primary" onclick="handleLogout()">Logout</button>`
             : `<button class="btn btn-outline" onclick="router.navigate('login')">Login</button> <button class="btn btn-primary" onclick="router.navigate('register')">Get Started</button>`;
 
         return `
-            <div class="container flex justify-between items-center">
-                <div class="logo" onclick="router.navigate('home')">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5 9.5 9.75 12 11zm0 2.5l-5-2.5-5 2.5 10 5 10-5-5-2.5-5 2.5z"/></svg>
-                    SwiftCourier
+            <div class="glass" style="width:100%">
+                <div class="container flex justify-between items-center" style="padding-top:1rem; padding-bottom:1rem;">
+                    <div class="logo" onclick="router.navigate('home')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5 9.5 9.75 12 11zm0 2.5l-5-2.5-5 2.5 10 5 10-5-5-2.5-5 2.5z"/></svg>
+                        SwiftCourier
+                    </div>
+                    
+                    <button class="mobile-toggle" onclick="toggleMobileMenu()">☰</button>
+
+                    <ul id="nav-links-list" class="nav-links">
+                        ${linksHtml}
+                         <!-- Mobile Only Auth Buttons -->
+                         <li class="nav-item hidden" style="display:none;" id="mobile-auth">
+                            ${authBtn}
+                         </li>
+                    </ul>
+
+                    <div class="flex gap-4 hidden-mobile">${authBtn}</div>
                 </div>
-                <ul class="nav-links hidden-mobile">${navLinks}</ul>
-                <div class="flex gap-4">${authBtn}</div>
             </div>
         `;
     };
@@ -68,12 +126,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const pages = {
         home: `
             <section class="hero">
-                <div class="container grid" style="grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center;">
+                <div class="container-narrow grid" style="grid-template-columns: 1fr 1fr; gap: 4rem; align-items: center;">
                     <div class="hero-content">
                         <h1 class="text-primary">Fast, Reliable <br> & Smart Courier <span class="text-primary">Management</span></h1>
                         <p class="text-muted" style="font-size: 1.125rem; margin-bottom: 2rem;">Real-time tracking, secure delivery, and easy booking. Experience the future of logistics with our intelligent courier management system.</p>
                         <div class="flex gap-4">
-                            <button class="btn btn-primary" onclick="router.navigate('login')">Book Courier &rarr;</button>
+                            <button class="btn btn-primary" onclick="handleHomeBooking()">Book Courier &rarr;</button>
                             <button class="btn btn-outline" onclick="router.navigate('track')">Track Shipment</button>
                         </div>
                     </div>
@@ -84,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </section>
 
-            <section class="container" style="padding: 4rem 1.5rem;">
+            <section class="container-narrow" style="padding: 4rem 1.5rem;">
                 <h2 class="text-center" style="margin-bottom: 3rem;">Why Choose <span class="text-primary">SwiftCourier</span>?</h2>
                 <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
                     <div class="feature-card">
@@ -106,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </section>
 
              <section style="background: var(--bg-surface); padding: 4rem 0;">
-                <div class="container">
+                <div class="container-narrow">
                     <h2 class="text-center" style="margin-bottom: 3rem;">How It <span class="text-primary">Works</span></h2>
                     <div class="flex justify-between" style="text-align: center;">
                         <div class="step-card">
@@ -259,18 +317,56 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `,
         dashboard: () => `
-            <div class="container" style="padding: 3rem 1rem;">
-                <div class="flex justify-between items-center mb-4">
-                    <h2>Dashboard</h2>
-                    <div>Welcome, <strong>${state.user?.name}</strong></div>
+            <div class="container">
+                <div class="dashboard-header">
+                    <div>
+                        <h2 style="margin:0;">Dashboard</h2>
+                        <p class="text-muted" style="margin:0;">Welcome back, <strong>${state.user?.name}</strong></p>
+                    </div>
+                    <div>
+                         <span class="status-badge status-Booked">${state.user?.role.toUpperCase()}</span>
+                    </div>
                 </div>
-                ${state.user?.role === 'customer' ? getCustomerDashboard() : getStaffDashboard()}
+                ${state.user?.role === 'customer' ? getCustomerDashboard() : state.user?.role === 'staff' ? getStaffDashboard() : getAdminDashboard()}
             </div>
         `
     };
 
+    // --- Auto Refresh ---
+    let refreshInterval;
+    const startAutoRefresh = () => {
+        if (refreshInterval) clearInterval(refreshInterval);
+        refreshInterval = setInterval(() => {
+            const page = window.location.hash || 'dashboard'; // simple check
+            if (state.user) {
+                if (state.user.role === 'customer') loadUserShipments();
+                else loadAllShipments();
+            }
+        }, 10000); // 10s refresh
+    };
+
+    const stopAutoRefresh = () => {
+        if (refreshInterval) clearInterval(refreshInterval);
+    };
+
     const getCustomerDashboard = () => `
         <div class="grid" style="grid-template-columns: 1fr; gap: 2rem;">
+            <!-- Summary Cards -->
+            <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                <div class="status-card" style="background:var(--primary); color:white; padding:1.5rem; border-radius:1rem;">
+                    <h3 id="cust-total">0</h3>
+                    <small>Total Bookings</small>
+                </div>
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="cust-active">0</h3>
+                    <small class="text-muted">In Transit</small>
+                </div>
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="cust-delivered">0</h3>
+                    <small class="text-muted">Delivered</small>
+                </div>
+            </div>
+
             <div style="background: white; padding: 2rem; border-radius: 1rem; border: 1px solid var(--border);">
                  <div class="flex justify-between items-center mb-4">
                     <h3>Book New Shipment</h3>
@@ -352,39 +448,101 @@ document.addEventListener('DOMContentLoaded', () => {
             
             <div>
                  <h3>Your Recent Shipments</h3>
-                 <div id="user-shipments" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem;">Loading...</div>
+                 <div id="user-shipments" class="dashboard-grid">Loading...</div>
+            </div>
+        </div>
+    `;
+
+    const getAdminDashboard = () => `
+        <div class="grid" style="grid-template-columns: 1fr; gap: 2rem;">
+            <!-- Analytics Cards -->
+            <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="admin-total">0</h3>
+                    <small class="text-muted">Total Shipments</small>
+                </div>
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="admin-active">0</h3>
+                    <small class="text-muted">Active Now</small>
+                </div>
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="admin-revenue" class="text-primary">$0</h3>
+                    <small class="text-muted">Total Revenue</small>
+                </div>
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="admin-delayed" style="color:var(--danger)">0</h3>
+                    <small class="text-muted">Delayed (>3d)</small>
+                </div>
+            </div>
+
+            <!-- Shipment Monitor -->
+            <div style="background: white; padding: 2rem; border-radius: 1rem; border: 1px solid var(--border);">
+                <h3>Live Shipment Monitor</h3>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; text-align:left; border-collapse:collapse; margin-top:1rem;">
+                        <thead>
+                            <tr style="border-bottom:2px solid var(--border); color:var(--text-muted);">
+                                <th style="padding:1rem;">Tracking ID</th>
+                                <th style="padding:1rem;">Sender</th>
+                                <th style="padding:1rem;">Status</th>
+                                <th style="padding:1rem;">Price</th>
+                                <th style="padding:1rem;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="admin-shipment-list">
+                            <tr><td colspan="5" style="padding:1rem; text-align:center;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     `;
 
     const getStaffDashboard = () => `
-        <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 2rem;">
-            <!-- Pickup Queue -->
-            <div>
-                <h3 class="flex items-center gap-2">
-                    <span>🔔</span> Pickup Requests
-                    <span id="pickup-count" class="badge">0</span>
-                </h3>
-                <div id="pickup-list" style="margin-top: 1rem;">
-                    <p class="text-muted">No new requests.</p>
+        <div class="grid" style="grid-template-columns: 1fr; gap: 2rem;">
+             <!-- Stats for Staff -->
+            <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="pickup-count">0</h3>
+                    <small>Pending Pickups</small>
+                </div>
+                 <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3 id="active-jobs-count">0</h3>
+                    <small>Active Deliveries</small>
+                </div>
+                 <div class="status-card" style="background:white; border:1px solid var(--border); padding:1.5rem; border-radius:1rem;">
+                    <h3>--</h3>
+                    <small>Performance</small>
                 </div>
             </div>
 
-            <!-- Active Deliveries -->
+            <!-- New Pickup Requests -->
             <div>
-                <h3 class="flex items-center gap-2">
-                    <span>🚚</span> Active Deliveries
-                </h3>
-                <div id="active-list" style="margin-top: 1rem;">
-                    <p class="text-muted">No active jobs.</p>
-                </div>
+                <h3 style="margin-bottom:1rem">New Pickup Requests</h3>
+                <div id="pickup-list" class="dashboard-grid">Loading...</div>
+            </div>
+
+            <!-- Active Jobs -->
+             <div>
+                <h3 style="margin-bottom:1rem">My Active Jobs</h3>
+                <div id="active-list" class="dashboard-grid">Loading...</div>
             </div>
         </div>
     `;
 
+
     // --- Router ---
     const router = {
         navigate: (page) => {
+            // Strict Role Routing Guard
+            if (page === 'home' && state.user && ['staff', 'admin'].includes(state.user.role)) {
+                return router.navigate('dashboard');
+            }
+
+            // Update URL hash for history and active link checking
+            window.location.hash = page;
+
+            stopAutoRefresh(); // Stop previous poll
             const app = document.getElementById('app');
             const isAuthPage = ['login', 'register'].includes(page);
 
@@ -403,6 +561,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (page === 'dashboard') {
                 if (state.user?.role === 'customer') loadUserShipments();
                 else loadAllShipments();
+                startAutoRefresh(); // Start polling
+            } else if (page === 'track') {
+                // Tracking auto-refresh could be added here similar to dashboard
             }
         }
     };
@@ -426,8 +587,11 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('user', JSON.stringify(data));
             localStorage.setItem('token', data.token);
             state.user = data; state.token = data.token;
+            showToast('Login Successful!', 'success');
             router.navigate('dashboard');
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
     };
 
     window.handleRegister = async (e) => {
@@ -442,14 +606,33 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('user', JSON.stringify(data));
             localStorage.setItem('token', data.token);
             state.user = data; state.token = data.token;
+            showToast('Account Created!', 'success');
             router.navigate('dashboard');
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
     };
 
     window.handleLogout = () => {
-        localStorage.clear();
-        state.user = null; state.token = null;
-        router.navigate('login');
+        if (confirm('Are you sure you want to logout?')) {
+            localStorage.clear();
+            state.user = null; state.token = null;
+            showToast('Logged out successfully', 'info');
+            router.navigate('login');
+        }
+    };
+
+    window.handleHomeBooking = () => {
+        if (state.user) {
+            router.navigate('dashboard');
+        } else {
+            router.navigate('login');
+        }
+    };
+
+    window.toggleMobileMenu = () => {
+        const nav = document.getElementById('nav-links-list');
+        nav.classList.toggle('active');
     };
 
     let bookingData = {};
@@ -464,22 +647,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const type = document.getElementById('book-type').value;
 
         if (step === 1) {
-            if (!sName || !sAddr) return alert('Please complete Sender details');
+            if (!sName || !sAddr) return showToast('Please complete Sender details', 'error');
             bookingData.sender = { name: sName, address: sAddr, contact: '1234567890' };
         }
         if (step === 2) {
-            if (!rName || !rAddr) return alert('Please complete Receiver details');
+            if (!rName || !rAddr) return showToast('Please complete Receiver details', 'error');
             bookingData.receiver = { name: rName, address: rAddr, contact: '0987654321' };
         }
         if (step === 3) {
-            if (!weight) return alert('Please enter weight');
-            bookingData.packageDetails = { weight, packageType: type, description: document.getElementById('book-desc').value };
+            if (!weight) return showToast('Please enter weight', 'error');
 
             // Price Calc
             const basePrice = 10;
             const weightPrice = weight * 5;
             const typePrice = type === 'Express' ? 20 : 0;
             const total = basePrice + weightPrice + typePrice;
+
+            bookingData.packageDetails = {
+                weight,
+                packageType: type,
+                description: document.getElementById('book-desc').value,
+                price: total
+            };
+
             document.getElementById('price-display').innerText = '$' + total.toFixed(2);
             document.getElementById('summary-text').innerText = `${type} delivery of ${weight}kg package to ${rAddr}.`;
         }
@@ -506,11 +696,11 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         try {
             await api.createShipment(bookingData);
-            alert('Shipment Booked Successfully!');
+            showToast('Shipment Booked Successfully!', 'success');
             // Reset Wizard
             loadUserShipments();
             router.navigate('dashboard'); // Re-render to reset
-        } catch (err) { console.error(err); alert('Booking Failed'); }
+        } catch (err) { showToast('Booking Failed: ' + err.message, 'error'); }
     };
 
     window.handleTrack = async () => {
@@ -574,7 +764,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (err) {
             resDiv.style.display = 'none';
-            alert('Shipment not found');
+            showToast('Shipment not found', 'error');
         }
     };
 
@@ -599,10 +789,28 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadUserShipments() {
         try {
             const data = await api.getUserShipments(state.user._id);
+
+            // Populate Cards
+            document.getElementById('cust-total').innerText = data.length;
+            document.getElementById('cust-active').innerText = data.filter(s => ['In Transit', 'Out for Delivery', 'Picked Up'].includes(s.status)).length;
+            document.getElementById('cust-delivered').innerText = data.filter(s => s.status === 'Delivered').length;
+
             document.getElementById('user-shipments').innerHTML = data.map(s => `
-                <div style="padding: 1rem; border-bottom: 1px solid var(--border); display:flex; justify-content:space-between;">
-                    <div><strong>${s.trackingId}</strong> <br> <small>${s.receiver.name}</small></div>
-                    <span class="status-badge status-${s.status.replace(/ /g, '-')}">${s.status}</span>
+                <div class="modern-card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">${s.trackingId}</div>
+                            <small class="text-muted">To: ${s.receiver.name}</small>
+                        </div>
+                        <span class="status-badge status-${s.status.replace(/ /g, '-')}">${s.status}</span>
+                    </div>
+                    <div class="card-body">
+                         <p class="text-sm text-muted">From: ${s.sender.address}</p>
+                         <p class="text-sm text-muted">To: ${s.receiver.address}</p>
+                    </div>
+                    <div class="card-footer">
+                         <button class="btn btn-outline" style="padding:0.5rem;" onclick="router.navigate('track'); setTimeout(()=> {document.getElementById('track-id').value='${s.trackingId}'; handleTrack()}, 500);">Track</button>
+                    </div>
                 </div>
             `).join('');
         } catch (err) { }
@@ -612,41 +820,86 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const data = await api.getAllShipments();
 
+            // ADMIN LOGIC
+            if (state.user.role === 'admin') {
+                const total = data.length;
+                const activeCount = data.filter(s => ['In Transit', 'Out for Delivery', 'Picked Up'].includes(s.status)).length;
+                const revenue = data.reduce((acc, curr) => acc + (curr.packageDetails?.price || 0), 0);
+                // Mock delay
+                const delayed = data.filter(s => new Date(s.createdAt) < new Date(Date.now() - 3 * 86400000) && s.status !== 'Delivered').length;
+
+                document.getElementById('admin-total').innerText = total;
+                document.getElementById('admin-active').innerText = activeCount;
+                document.getElementById('admin-revenue').innerText = '$' + revenue.toFixed(2);
+                document.getElementById('admin-delayed').innerText = delayed;
+
+                document.getElementById('admin-shipment-list').innerHTML = data.map(s => `
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:1rem;"><strong>${s.trackingId}</strong></td>
+                    <td style="padding:1rem;">${s.sender.name}</td>
+                    <td style="padding:1rem;"><span class="status-badge status-${s.status.replace(/ /g, '-')}">${s.status}</span></td>
+                    <td style="padding:1rem;">$${(s.packageDetails?.price || 0).toFixed(2)}</td>
+                    <td style="padding:1rem;">
+                         <button class="btn btn-outline" style="padding:0.25rem 0.5rem; font-size:0.8rem" onclick="router.navigate('track'); setTimeout(()=> {document.getElementById('track-id').value='${s.trackingId}'; handleTrack()}, 500);">View</button>
+                    </td>
+                </tr>
+            `).join('');
+                return;
+            }
+
+            // STAFF LOGIC
+
             // Filter
             const pickups = data.filter(s => s.status === 'Booked');
             const active = data.filter(s => ['Picked Up', 'In Transit', 'Out for Delivery'].includes(s.status));
 
             // Render Pickups
             const pickupHtml = pickups.length ? pickups.map(s => `
-                <div class="action-card">
+            <div class="modern-card">
+                <div class="card-header">
                     <div>
-                        <strong>${s.trackingId}</strong> <br>
-                        <small class="text-muted">${s.sender.address} -> ${s.receiver.address}</small> <br>
-                        <span class="status-badge status-Booked">New</span>
+                        <div class="card-title">${s.trackingId}</div>
+                        <div class="card-subtitle">Pickup Request</div>
                     </div>
-                    <div>
-                        <button class="btn btn-primary" style="padding: 0.5rem;" onclick="handleStaffAction('${s.trackingId}', 'Picked Up')">Accept</button>
-                    </div>
+                    <span class="status-badge status-Booked">New</span>
                 </div>
-            `).join('') : '<p class="text-muted">No new requests.</p>';
+                <div class="card-body">
+                    <p><strong>From:</strong> ${s.sender.address}</p>
+                    <p><strong>To:</strong> ${s.receiver.address}</p>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-primary" onclick="handleStaffAction('${s.trackingId}', 'Picked Up')">Accept</button>
+                    <button class="btn btn-outline" style="color:var(--danger); border-color:var(--danger);" onclick="handleStaffAction('${s.trackingId}', 'Cancelled')">Reject</button>
+                </div>
+            </div>
+        `).join('') : '<div class="text-muted text-center" style="grid-column: 1 / -1; padding: 2rem;">No new pickup requests.</div>';
 
             document.getElementById('pickup-list').innerHTML = pickupHtml;
             document.getElementById('pickup-count').innerText = pickups.length;
 
             // Render Active
             const activeHtml = active.length ? active.map(s => `
-                <div class="action-card">
+            <div class="modern-card">
+                 <div class="card-header">
                     <div>
-                        <strong>${s.trackingId}</strong> <br>
-                        <small class="text-muted">Status: ${s.status}</small>
+                        <div class="card-title">${s.trackingId}</div>
+                        <div class="card-subtitle">Active Delivery</div>
                     </div>
-                    <div class="action-btn-group">
-                        ${getActionsForStatus(s)}
-                    </div>
+                    <span class="status-badge status-${s.status.replace(/ /g, '-')}">${s.status}</span>
                 </div>
-            `).join('') : '<p class="text-muted">No active jobs.</p>';
+                 <div class="card-body">
+                    <p><strong>From:</strong> ${s.sender.address}</p>
+                    <p><strong>To:</strong> ${s.receiver.address}</p>
+                    <p class="text-muted text-sm" style="margin-top:0.5rem">Current: ${s.currentLocation || 'N/A'}</p>
+                </div>
+                <div class="card-footer">
+                    ${getActionsForStatus(s)}
+                </div>
+            </div>
+        `).join('') : '<div class="text-muted text-center" style="grid-column: 1 / -1; padding: 2rem;">No active jobs.</div>';
 
             document.getElementById('active-list').innerHTML = activeHtml;
+            document.getElementById('active-jobs-count').innerText = active.length; // Update count
 
         } catch (err) { }
     }
@@ -664,10 +917,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 await api.updateStatus(id, { status, deliveryProof: proof });
 
                 // Mock Notification
-                alert(`Notification Sent: Shipment ${id} is now ${status}`);
+                showToast(`Status updated to ${status}`, 'success');
 
                 loadAllShipments();
-            } catch (err) { console.error(err); }
+            } catch (err) { showToast(err.message, 'error'); }
         }
     };
 
@@ -679,5 +932,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Init ---
-    router.navigate('home');
+    // --- Init ---
+    const initPage = window.location.hash.replace('#', '') || 'home';
+    router.navigate(initPage);
 });
