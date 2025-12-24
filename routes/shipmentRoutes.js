@@ -9,6 +9,7 @@ const { protect } = require('../middleware/authMiddleware');
 router.post('/', protect, async (req, res) => {
     try {
         const { sender, receiver, packageDetails, userId } = req.body;
+        console.log('Creating Shipment with Price:', packageDetails.price);
 
         // Generate random Tracking ID
         const trackingId = 'TRK' + Math.floor(100000 + Math.random() * 900000);
